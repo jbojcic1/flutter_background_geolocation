@@ -1,18 +1,15 @@
+import 'dart:async';
+////
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'dart:async';
-
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
     as bg;
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../app.dart';
 import '../config/ENV.dart';
-
-////
-// For pretty-printing locations as JSON
-// @see _onLocation
-//
-import 'dart:convert';
 
 JsonEncoder encoder = new JsonEncoder.withIndent("     ");
 
@@ -50,6 +47,7 @@ class _HelloWorldPageState extends State<HelloWorldPage> {
   String _motionActivity;
   String _odometer;
   String _content;
+  String _config;
 
   @override
   void initState() {
@@ -60,6 +58,7 @@ class _HelloWorldPageState extends State<HelloWorldPage> {
     _content = '';
     _motionActivity = 'UNKNOWN';
     _odometer = '0';
+    _config = "";
     _initPlatformState();
   }
 
@@ -89,8 +88,8 @@ class _HelloWorldPageState extends State<HelloWorldPage> {
 
     // 2.  Configure the plugin
     bg.BackgroundGeolocation.ready(bg.Config(
-            reset: true,
-            debug: true,
+            // reset: true,
+            // debug: true,
             logLevel: bg.Config.LOG_LEVEL_VERBOSE,
             desiredAccuracy: bg.Config.DESIRED_ACCURACY_HIGH,
             distanceFilter: 10.0,
@@ -117,6 +116,7 @@ class _HelloWorldPageState extends State<HelloWorldPage> {
       setState(() {
         _enabled = state.enabled;
         _isMoving = state.isMoving;
+        _config = encoder.convert(state.toMap());
       });
     }).catchError((error) {
       print('[ready] ERROR: $error');
@@ -248,7 +248,7 @@ class _HelloWorldPageState extends State<HelloWorldPage> {
         ],
         backgroundColor: Theme.of(context).bottomAppBarColor,
       ),
-      body: SingleChildScrollView(child: Text('$_content')),
+      body: SingleChildScrollView(child: Text('$_config')),
       bottomNavigationBar: BottomAppBar(
           child: Container(
               padding: const EdgeInsets.only(left: 5.0, right: 5.0),
@@ -260,7 +260,17 @@ class _HelloWorldPageState extends State<HelloWorldPage> {
                       icon: Icon(Icons.gps_fixed),
                       onPressed: _onClickGetCurrentPosition,
                     ),
-                    Text('$_motionActivity · $_odometer km'),
+                    MaterialButton(
+                        onPressed: () async {
+                          bg.BackgroundGeolocation.setConfig(
+                              bg.Config(headers: {'test': 'test'}));
+                          final newConfig =
+                              await bg.BackgroundGeolocation.state;
+                          setState(() {
+                            _config = encoder.convert(newConfig.toMap());
+                          });
+                        },
+                        child: Text('Set header')),
                     MaterialButton(
                         minWidth: 50.0,
                         child: Icon(
