@@ -1,18 +1,17 @@
+import 'dart:async';
+////
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'dart:async';
-
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
     as bg;
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../app.dart';
 import '../config/ENV.dart';
-
-////
-// For pretty-printing locations as JSON
-// @see _onLocation
-//
-import 'dart:convert';
 
 JsonEncoder encoder = new JsonEncoder.withIndent("     ");
 
@@ -92,8 +91,22 @@ class _HelloWorldPageState extends State<HelloWorldPage> {
             reset: true,
             debug: true,
             logLevel: bg.Config.LOG_LEVEL_VERBOSE,
-            desiredAccuracy: bg.Config.DESIRED_ACCURACY_HIGH,
-            distanceFilter: 10.0,
+            httpRootProperty: '.',
+            locationTemplate:
+                '{"id":"<%= uuid %>","timeTakenUTC":"<%= timestamp %>","latitude":<%= latitude %>,"longitude":<%= longitude %>,"speedMeters":<%= speed %>,"isMoving":<%= is_moving %>}',
+            method: 'POST',
+            desiredAccuracy: Platform.isIOS
+                ? bg.Config.DESIRED_ACCURACY_NAVIGATION
+                : bg.Config.DESIRED_ACCURACY_HIGH,
+            stopTimeout: 5,
+            stationaryRadius: 200,
+            stopOnStationary: false,
+            stopOnTerminate: false,
+            startOnBoot: true,
+            // Params were tuned using https://docs.google.com/spreadsheets/d/1iuAS1Qz87uwQrEibSk6wuNq1vymL0XKs3YKqF5yndbU#gid=1997201702
+            distanceFilter: Platform.isAndroid ? 0 : 200.0,
+            elasticityMultiplier: 2,
+            maxRecordsToPersist: 5,
             backgroundPermissionRationale: bg.PermissionRationale(
                 title:
                     "Allow {applicationName} to access this device's location even when the app is closed or not in use.",
@@ -101,16 +114,9 @@ class _HelloWorldPageState extends State<HelloWorldPage> {
                     "This app collects location data to enable recording your trips to work and calculate distance-travelled.",
                 positiveAction: 'Change to "{backgroundPermissionOptionLabel}"',
                 negativeAction: 'Cancel'),
-            url: "${ENV.TRACKER_HOST}/api/locations",
-            authorization: bg.Authorization(
-                // <-- demo server authenticates with JWT
-                strategy: bg.Authorization.STRATEGY_JWT,
-                accessToken: token.accessToken,
-                refreshToken: token.refreshToken,
-                refreshUrl: "${ENV.TRACKER_HOST}/api/refresh_token",
-                refreshPayload: {'refresh_token': '{refreshToken}'}),
-            stopOnTerminate: false,
-            startOnBoot: true,
+            url: "http://192.168.1.4:3000/location",
+            locationAuthorizationRequest: 'Always',
+            showsBackgroundLocationIndicator: true, // ios only,
             enableHeadless: true))
         .then((bg.State state) {
       print("[ready] ${state.toMap()}");
@@ -147,18 +153,39 @@ class _HelloWorldPageState extends State<HelloWorldPage> {
     }
   }
 
+  Future<void> _sendLogs() async {
+    print('******************');
+    print('******************');
+    print('Getting logs');
+    bg.Logger.getLog().then((String log) {
+      print('Fetched logs. Sending to endpoint');
+      return http
+          .post('http://192.168.1.4:3000/location/logs', body: log)
+          .then((response) {
+        print('Sent. Response: $response');
+      }).catchError((e) {
+        print('Error. Failed to send. $e');
+      }).then((_) {
+        print('******************');
+        print('******************');
+      });
+    });
+  }
+
   // Manually toggle the tracking state:  moving vs stationary
   void _onClickChangePace() {
-    setState(() {
-      _isMoving = !_isMoving;
-    });
-    print("[onClickChangePace] -> $_isMoving");
+    _sendLogs();
 
-    bg.BackgroundGeolocation.changePace(_isMoving).then((bool isMoving) {
-      print('[changePace] success $isMoving');
-    }).catchError((e) {
-      print('[changePace] ERROR: ' + e.code.toString());
-    });
+    // setState(() {
+    //   _isMoving = !_isMoving;
+    // });
+    // print("[onClickChangePace] -> $_isMoving");
+    //
+    // bg.BackgroundGeolocation.changePace(_isMoving).then((bool isMoving) {
+    //   print('[changePace] success $isMoving');
+    // }).catchError((e) {
+    //   print('[changePace] ERROR: ' + e.code.toString());
+    // });
   }
 
   // Manually fetch the current position.
